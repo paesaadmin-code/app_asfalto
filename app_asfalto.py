@@ -174,6 +174,7 @@ if menu == "🗺️ Centro de Control y Rutas":
                     distancia_tramo += (t_regreso + t_ida)
 
             if st.button("🚀 Confirmar Despacho y Programar Tiro"):
+                # BLINDAJE ABSOLUTO DE TIPOS DE DATOS PARA EVITAR APIERROR DE SUPABASE
                 nuevo_t = {
                     "cliente": str(cliente_name), 
                     "latitud": float(lat_obra), 
@@ -184,14 +185,14 @@ if menu == "🗺️ Centro de Control y Rutas":
                     "hora": str(h_prog), 
                     "distribuidora": str(unidad_sel), 
                     "estatus": "Pendiente",
-                    "minutos_retraso": 0, 
+                    "minutos_retraso": int(0), 
                     "distancia_km": float(distancia_tramo), 
                     "tiempo_estimado_min": float(tiempo_tramo)
                 }
                 supabase.table("registro_tiros").insert(nuevo_t).execute()
                 
                 nuevos_lits = max(0, int(info_u['litros_disponibles'] - litros_req))
-                supabase.table("distribuidoras").update({"litros_disponibles": nuevos_lits, "estado": "En Obra", "ubicacion_actual": cliente_name}).eq("unidad", unidad_sel).execute()
+                supabase.table("distribuidoras").update({"litros_disponibles": nuevos_lits, "estado": "En Obra", "ubicacion_actual": str(cliente_name)}).eq("unidad", str(unidad_sel)).execute()
                 st.success("¡Tiro agendado con éxito!")
                 st.rerun()
 
@@ -211,16 +212,16 @@ if menu == "🗺️ Centro de Control y Rutas":
                 opts = ["Pendiente", "En Proceso", "Completado ✅", "Cancelado ❌"]
                 n_est = st.selectbox("Estatus", opts, index=opts.index(row["estatus"]), key=f"est_{row['id']}")
                 if n_est != row["estatus"]:
-                    supabase.table("registro_tiros").update({"estatus": n_est}).eq("id", int(row["id"])).execute()
+                    supabase.table("registro_tiros").update({"estatus": str(n_est)}).eq("id", int(row["id"])).execute()
                     if n_est == "Cancelado ❌":
                         info_c = df_distribuidoras[df_distribuidoras["unidad"] == row["distribuidora"]].iloc[0]
                         l_dev = min(int(info_c["capacidad_total"]), int(info_c["litros_disponibles"] + row["litros"]))
-                        supabase.table("distribuidoras").update({"litros_disponibles": l_dev}).eq("unidad", row["distribuidora"]).execute()
+                        supabase.table("distribuidoras").update({"litros_disponibles": int(l_dev)}).eq("unidad", str(row["distribuidora"])).execute()
                     st.rerun()
             with c3:
                 ret = st.number_input("Retraso (Min)", min_value=0, value=int(row["minutos_retraso"]), step=15, key=f"ret_{row['id']}")
                 if ret != row["minutos_retraso"]:
-                    supabase.table("registro_tiros").update({"minutos_retraso": ret}).eq("id", int(row["id"])).execute()
+                    supabase.table("registro_tiros").update({"minutos_retraso": int(ret)}).eq("id", int(row["id"])).execute()
                     st.rerun()
             with c4:
                 if st.button("🗑️", key=f"del_{row['id']}"):
@@ -261,7 +262,7 @@ elif menu == "🏭 Gestión de Planta y Producción":
     with c2:
         prod = st.number_input("Ingreso de Producción Nueva (Litros)", min_value=0, step=1000)
         if st.button("Actualizar Inventario Base"):
-            config_planta["tanque_planta_actual"] = min(cap_planta, act_planta + prod)
+            config_planta["tanque_planta_actual"] = float(min(cap_planta, act_planta + prod))
             save_planta_config(config_planta)
             st.success("Producción almacenada.")
             st.rerun()
@@ -277,9 +278,9 @@ elif menu == "🏭 Gestión de Planta y Producción":
         l_cargar = st.number_input("Litros a transferir", min_value=0, max_value=int(min(espacio, act_planta)), step=500)
         
         if st.button("Ejecutar Transferencia de Líquido"):
-            config_planta["tanque_planta_actual"] = act_planta - l_cargar
+            config_planta["tanque_planta_actual"] = float(act_planta - l_cargar)
             save_planta_config(config_planta)
-            supabase.table("distribuidoras").update({"litros_disponibles": int(row_u["litros_disponibles"] + l_cargar), "estado": "En Planta", "ubicacion_actual": "Planta"}).eq("unidad", u_recarga).execute()
+            supabase.table("distribuidoras").update({"litros_disponibles": int(row_u["litros_disponibles"] + l_cargar), "estado": "En Planta", "ubicacion_actual": "Planta"}).eq("unidad", str(u_recarga)).execute()
             st.success("Sincronización de tanques completada.")
             st.rerun()
 
@@ -293,7 +294,11 @@ elif menu == "🚛 Flota y Estatus Mecánico":
         edited_df = st.data_editor(df_distribuidoras, num_rows="dynamic", use_container_width=True, key="edt_fl", column_config=opts)
         if st.button("Guardar Cambios de Flota"):
             for _, row in edited_df.iterrows():
-                supabase.table("distribuidoras").upsert(row.to_dict()).execute()
+                row_dict = row.to_dict()
+                # Forzar limpiezas de datos numéricos
+                row_dict["capacidad_total"] = int(row_dict["capacidad_total"])
+                row_dict["litros_disponibles"] = int(row_dict["litros_disponibles"])
+                supabase.table("distribuidoras").upsert(row_dict).execute()
             st.success("Base de datos de flota actualizada.")
             st.rerun()
 
@@ -309,7 +314,12 @@ elif menu == "👥 Catálogo Avanzado de Clientes":
         lon_cli = st.number_input("Longitud de la Ubicación", format="%.6f", value=-100.4109)
         if st.button("Guardar en Catálogo"):
             if n_cli and n_obra:
-                supabase.table("clientes_frecuentes").insert({"cliente": n_cli, "obra": n_obra, "latitud": lat_cli, "longitud": lon_cli}).execute()
+                supabase.table("clientes_frecuentes").insert({
+                    "cliente": str(n_cli), 
+                    "obra": str(n_obra), 
+                    "latitud": float(lat_cli), 
+                    "longitud": float(lon_cli)
+                }).execute()
                 st.success("Cliente guardado.")
                 st.rerun()
     with col_cl2:
@@ -318,9 +328,13 @@ elif menu == "👥 Catálogo Avanzado de Clientes":
             edit_clientes = st.data_editor(df_clientes, num_rows="dynamic", use_container_width=True, key="edt_cli")
             if st.button("Guardar Modificaciones de Catálogo"):
                 for _, row in edit_clientes.iterrows():
-                    if "buscador_comb" in row: del row["buscador_comb"]
-                    if "display_search" in row: del row["display_search"]
-                    supabase.table("clientes_frecuentes").upsert(row.to_dict()).execute()
+                    row_dict = row.to_dict()
+                    if "buscador_comb" in row_dict: del row_dict["buscador_comb"]
+                    if "display_search" in row_dict: del row_dict["display_search"]
+                    row_dict["latitud"] = float(row_dict["latitud"])
+                    row_dict["longitud"] = float(row_dict["longitud"])
+                    supabase.table("clientes_frecuentes").upsert(row_dict).execute()
+                st.success("Directorio sincronizado.")
                 st.rerun()
             
     st.markdown("---")
