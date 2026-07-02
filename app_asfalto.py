@@ -17,7 +17,7 @@ try:
     PASSWORD_ADMIN = st.secrets.get("PASSWORD_ADMIN", "asfalto2026")
 except Exception:
     SUPABASE_URL = "https://abymypujfonmtvakfsfg.supabase.co"  # <--- PON TU URL
-    SUPABASE_KEY = "sb_publishable_Iy33aS443gGG3SlSz9PTNw_Upv8NhCtY"                           # <--- PON TU KEY
+    SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFieW15cHVqZm9ubXR2YWtmc2ZnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI5MjA0OTIsImV4cCI6MjA5ODQ5NjQ5Mn0.AsystVXsFbMmHoi8RarhBqPsW4zgvc-EcwAEo9BXV-Q"                           # <--- PON TU KEY
     USUARIO_ADMIN = "admin"
     PASSWORD_ADMIN = "asfalto2026"
 
