@@ -37,30 +37,62 @@ if not st.session_state["authenticated"]:
 # Conectar a la base de datos
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-# --- FUNCIONES DE BASE DE DATOS ---
+# --- FUNCIONES DE BASE DE DATOS CON AUTO-RELLENO DE SEGURIDAD ---
 def load_planta_config():
-    res = supabase.table("config_planta").select("*").eq("id", 1).execute()
-    if not res.data:
+    try:
+        res = supabase.table("config_planta").select("*").eq("id", 1).execute()
+        if not res.data:
+            raise Exception("Vacío")
+        return res.data[0]
+    except:
         return {"id": 1, "nombre": "Planta Monterrey", "latitud": 25.8250665, "longitud": -100.4109077, "tanque_planta_capacidad": 50000.0, "tanque_planta_actual": 40000.0}
-    return res.data[0]
 
 def save_planta_config(config_dict):
     supabase.table("config_planta").update(config_dict).eq("id", 1).execute()
 
 def load_data():
-    res = supabase.table("registro_tiros").select("*").execute()
-    df = pd.DataFrame(res.data)
-    if df.empty:
+    try:
+        res = supabase.table("registro_tiros").select("*").execute()
+        df = pd.DataFrame(res.data)
+        if df.empty:
+            raise Exception("Vacío")
+        return df
+    except:
         return pd.DataFrame(columns=["id", "cliente", "latitud", "longitud", "litros", "ingeniero", "fecha", "hora", "distribuidora", "estatus", "minutos_retraso", "distancia_km", "tiempo_estimado_min"])
-    return df
 
 def load_distribuidoras():
-    res = supabase.table("distribuidoras").select("*").execute()
-    return pd.DataFrame(res.data)
+    base_camiones = [
+        {"unidad": "D-01", "chofer": "Juan Pérez", "capacidad_total": 10000, "litros_disponibles": 10000, "estado": "En Planta", "ubicacion_actual": "Planta", "condicion_operativa": "Operativa"},
+        {"unidad": "D-02", "chofer": "Carlos Gómez", "capacidad_total": 15000, "litros_disponibles": 15000, "estado": "En Planta", "ubicacion_actual": "Planta", "condicion_operativa": "Operativa"},
+        {"unidad": "D-03", "chofer": "Luis Martínez", "capacidad_total": 8000, "litros_disponibles": 8000, "estado": "En Planta", "ubicacion_actual": "Planta", "condicion_operativa": "Operativa"}
+    ]
+    try:
+        res = supabase.table("distribuidoras").select("*").execute()
+        df = pd.DataFrame(res.data)
+        if df.empty:
+            supabase.table("distribuidoras").insert(base_camiones).execute()
+            res = supabase.table("distribuidoras").select("*").execute()
+            df = pd.DataFrame(res.data)
+        return df
+    except:
+        return pd.DataFrame(base_camiones)
 
 def load_clientes():
-    res = supabase.table("clientes_frecuentes").select("*").execute()
-    return pd.DataFrame(res.data)
+    base_clientes = [
+        {"id": 1, "cliente": "Constructora Alfa", "obra": "Tramo Carretera Nacional", "latitud": 25.5689, "longitud": -100.2452},
+        {"id": 2, "cliente": "Pavimentos Monterrey", "obra": "Obra Gonzalitos Centro", "latitud": 25.6866, "longitud": -100.3452},
+        {"id": 3, "cliente": "Asfaltos del Norte", "obra": "Tramo Apodaca Industrial", "latitud": 25.7785, "longitud": -100.1894}
+    ]
+    try:
+        res = supabase.table("clientes_frecuentes").select("*").execute()
+        df = pd.DataFrame(res.data)
+        if df.empty:
+            supabase.table("clientes_frecuentes").insert(base_clientes).execute()
+            res = supabase.table("clientes_frecuentes").select("*").execute()
+            df = pd.DataFrame(res.data)
+        return df
+    except:
+        return pd.DataFrame(base_clientes)
 
 def get_route_info(coord1, coord2):
     url = f"http://router.project-osrm.org/route/v1/driving/{coord1[1]},{coord1[0]};{coord2[1]},{coord2[0]}?overview=false"
@@ -77,9 +109,13 @@ def get_route_info(coord1, coord2):
 st.set_page_config(layout="wide", page_title="Control Logístico Monterrey")
 st.title("🏗️ Plataforma Logística de Asfalto - Monterrey")
 
-# Descarga de datos
+if st.button("Cerrar Sesión 🔒"):
+    st.session_state["authenticated"] = False
+    st.rerun()
+
+# Descarga e inicialización blindada de datos
 config_planta = load_planta_config()
-COORDS_PLANTA = (25.8250665, -100.4109077) # Fijadas por solicitud del usuario
+COORDS_PLANTA = (25.8250665, -100.4109077) # Coordenadas fijas de la planta de Mateo
 df_tiros = load_data()
 df_distribuidoras = load_distribuidoras()
 df_clientes = load_clientes()
@@ -91,14 +127,13 @@ menu = st.radio("Secciones Disponibles:", ["🗺️ Centro de Control y Rutas", 
 # =====================================================================
 if menu == "🗺️ Centro de Control y Rutas":
     
-    # BOTÓN DIRECTO Y DESPLEGABLE REFORZADO PARA PROGRAMAR TIROS
     with st.expander("➕ PROGRAMAR NUEVO TIRO / OBRA (Clic para abrir Formulario)"):
         st.subheader("Formulario Operativo")
         
         camiones_operativos = df_distribuidoras[df_distribuidoras["condicion_operativa"] == "Operativa"] if not df_distribuidoras.empty else pd.DataFrame()
         
         if camiones_operativos.empty:
-            st.error("🚨 Alerta: No hay distribuidoras registradas u operativas en la base de datos.")
+            st.error("🚨 Alerta: No hay distribuidoras disponibles u operativas.")
         else:
             tipo_cliente = st.radio("Método de Selección de Destino", ["Buscador de Clientes Frecuentes", "Nueva Dirección Manual"], horizontal=True)
             
@@ -115,7 +150,7 @@ if menu == "🗺️ Centro de Control y Rutas":
                 lon_obra = st.number_input("Longitud de Destino", format="%.6f", value=-100.4100)
             
             unidad_sel = st.selectbox("Asignar Unidad de Transporte", camiones_operativos["unidad"].tolist())
-            info_u = camiones_operativos[camiones_operativos["unidad"] == unidad_sel].iloc[0]
+            info_u = camiones_operativos[camiones_operativos["unidad"] == unity_find := unidad_sel].iloc[0]
             st.info(f"Operador: {info_u['chofer']} | Disponible en Tanque: {info_u['litros_disponibles']:,} Lts")
             
             litros_req = st.number_input("Volumen Requerido (Litros)", min_value=0, step=500, max_value=int(info_u['capacidad_total']))
@@ -123,7 +158,7 @@ if menu == "🗺️ Centro de Control y Rutas":
             f_prog = st.date_input("Fecha de Ejecución", datetime.date.today())
             h_prog = st.time_input("Hora de Arribo", datetime.time(8, 0))
 
-            # Cálculos Logísticos basados en OSRM
+            # Cálculos Logísticos
             tiros_hoy = df_tiros[(df_tiros["fecha"] == str(f_prog)) & (df_tiros["distribuidora"] == unidad_sel) & (df_tiros["estatus"] != "Cancelado ❌")] if not df_tiros.empty else pd.DataFrame()
             origen = (tiros_hoy.sort_values(by="hora").iloc[-1]["latitud"], tiros_hoy.sort_values(by="hora").iloc[-1]["longitud"]) if not tiros_hoy.empty else COORDS_PLANTA
             
@@ -134,8 +169,9 @@ if menu == "🗺️ Centro de Control y Rutas":
                 st.warning("⚠️ ¡La unidad requiere recargar en Planta antes de este punto!")
                 _, t_regreso = get_route_info(origen, COORDS_PLANTA)
                 _, t_ida = get_route_info(COORDS_PLANTA, (lat_obra, lon_obra))
-                st.write(f"🔄 **Ruta de Retorno Activa:** El camión tardará **{(t_regreso + 45 + t_ida):.0f} minutos** en regresar a la base, cargar tanque (45 min) y llegar a la obra.")
-                distancia_tramo += (t_regreso + t_ida)
+                if t_regreso and t_ida:
+                    st.write(f"🔄 **Protocolo de Recarga (1 Unidad):** El camión tardará **{(t_regreso + 45 + t_ida):.0f} minutos** totales en reabastecerse.")
+                    distancia_tramo += (t_regreso + t_ida)
 
             if st.button("🚀 Confirmar Despacho y Programar Tiro"):
                 nuevo_t = {
@@ -146,13 +182,11 @@ if menu == "🗺️ Centro de Control y Rutas":
                 }
                 supabase.table("registro_tiros").insert(nuevo_t).execute()
                 
-                # Descontar del camión en vivo
                 nuevos_lits = max(0, int(info_u['litros_disponibles'] - litros_req))
                 supabase.table("distribuidoras").update({"litros_disponibles": nuevos_lits, "estado": "En Obra", "ubicacion_actual": cliente_name}).eq("unidad", unidad_sel).execute()
-                st.success("¡Tiro agendado y guardado en la nube!")
+                st.success("¡Tiro agendado con éxito!")
                 st.rerun()
 
-    # MONITOREO DIARIO DE TRABAJOS
     st.subheader("Planificación del Día")
     f_filtro = st.date_input("Fecha a Visualizar", datetime.date.today())
     df_dia_all = df_tiros[df_tiros["fecha"] == str(f_filtro)].copy() if not df_tiros.empty else pd.DataFrame()
@@ -181,13 +215,10 @@ if menu == "🗺️ Centro de Control y Rutas":
                     supabase.table("registro_tiros").update({"minutos_retraso": ret}).eq("id", int(row["id"])).execute()
                     st.rerun()
             with c4:
-                # BOTÓN DE ELIMINACIÓN CON CREDENCIALES ADMIN
                 if st.button("🗑️", key=f"del_{row['id']}"):
                     supabase.table("registro_tiros").delete().eq("id", int(row["id"])).execute()
-                    st.success("Tiro eliminado")
                     st.rerun()
         
-        # MAPA FIJO CENTRADO EN MONTERREY
         st.markdown("### 🗺️ Visualización Cartográfica del Día")
         m = folium.Map(location=COORDS_PLANTA, zoom_start=11)
         folium.Marker(COORDS_PLANTA, popup="Nuestra Planta Monterrey", icon=folium.Icon(color="red", icon="building", prefix='fa')).add_to(m)
@@ -202,7 +233,7 @@ if menu == "🗺️ Centro de Control y Rutas":
             if len(puntos) > 1: folium.PolyLine(puntos, color="darkblue", weight=3).add_to(m)
         folium_static(m, width=1000, height=450)
     else:
-        st.info("No hay tiros registrados para el día seleccionado. El mapa base de Monterrey se muestra a continuación:")
+        st.info("No hay tiros registrados para hoy. Se despliega el mapa base de Monterrey:")
         m = folium.Map(location=COORDS_PLANTA, zoom_start=11)
         folium.Marker(COORDS_PLANTA, popup="Nuestra Planta Monterrey", icon=folium.Icon(color="red", icon="building", prefix='fa')).add_to(m)
         folium_static(m, width=1000, height=450)
@@ -213,7 +244,6 @@ if menu == "🗺️ Centro de Control y Rutas":
 elif menu == "🏭 Gestión de Planta y Producción":
     st.subheader("Control del Tanque de Almacenamiento Principal")
     
-    # CORRECCIÓN DE ERROR DE NÚMEROS FLOTANTES EN METRICAS
     cap_planta = float(config_planta.get("tanque_planta_capacidad", 50000.0))
     act_planta = float(config_planta.get("tanque_planta_actual", 40000.0))
     
@@ -250,13 +280,14 @@ elif menu == "🏭 Gestión de Planta y Producción":
 # =====================================================================
 elif menu == "🚛 Flota y Estatus Mecánico":
     st.subheader("Control Mecánico de Petrolizadoras")
-    opts = {"condicion_operativa": st.column_config.SelectboxColumn("Estatus de Salida", options=["Operativa", "En Taller", "Sin Chofer"])}
-    edited_df = st.data_editor(df_distribuidoras, num_rows="dynamic", use_container_width=True, key="edt_fl", column_config=opts)
-    if st.button("Guardar Cambios de Flota"):
-        for _, row in edited_df.iterrows():
-            supabase.table("distribuidoras").upsert(row.to_dict()).execute()
-        st.success("Base de datos de flota actualizada.")
-        st.rerun()
+    if not df_distribuidoras.empty:
+        opts = {"condicion_operativa": st.column_config.SelectboxColumn("Estatus de Salida", options=["Operativa", "En Taller", "Sin Chofer"])}
+        edited_df = st.data_editor(df_distribuidoras, num_rows="dynamic", use_container_width=True, key="edt_fl", column_config=opts)
+        if st.button("Guardar Cambios de Flota"):
+            for _, row in edited_df.iterrows():
+                supabase.table("distribuidoras").upsert(row.to_dict()).execute()
+            st.success("Base de datos de flota actualizada.")
+            st.rerun()
 
 elif menu == "👥 Catálogo Avanzado de Clientes":
     st.subheader("Directorio Corporativo de Clientes e Historial de Obras")
@@ -275,20 +306,19 @@ elif menu == "👥 Catálogo Avanzado de Clientes":
                 st.rerun()
     with col_cl2:
         st.markdown("### Directorio Guardado")
-        edit_clientes = st.data_editor(df_clientes, num_rows="dynamic", use_container_width=True, key="edt_cli")
-        if st.button("Guardar Modificaciones de Catálogo"):
-            for _, row in edit_clientes.iterrows():
-                if "buscador_comb" in row: del row["buscador_comb"]
-                if "display_search" in row: del row["display_search"]
-                supabase.table("clientes_frecuentes").upsert(row.to_dict()).execute()
-            st.rerun()
+        if not df_clientes.empty:
+            edit_clientes = st.data_editor(df_clientes, num_rows="dynamic", use_container_width=True, key="edt_cli")
+            if st.button("Guardar Modificaciones de Catálogo"):
+                for _, row in edit_clientes.iterrows():
+                    if "buscador_comb" in row: del row["buscador_comb"]
+                    if "display_search" in row: del row["display_search"]
+                    supabase.table("clientes_frecuentes").upsert(row.to_dict()).execute()
+                st.rerun()
             
     st.markdown("---")
     st.subheader("🔎 Historial de Tiros y Responsables por Cliente")
     if not df_clientes.empty:
         cliente_auditar = st.selectbox("Selecciona un cliente para auditar su historial completo de tiros realizados:", df_clientes["cliente"].unique().tolist())
-        
-        # Filtrar todos los tiros que contengan el nombre del cliente
         tiros_cliente = df_tiros[df_tiros["cliente"].str.contains(cliente_auditar, case=False, na=False)] if not df_tiros.empty else pd.DataFrame()
         
         if not tiros_cliente.empty:
