@@ -92,8 +92,28 @@ if st.button("Cerrar Sesión"):
     st.session_state["authenticated"] = False
     st.rerun()
 
-config_planta = load_planta_config()
-COORDS_PLANTA = (config_planta["latitud"], config_planta["longitud"])
+def load_planta_config():
+    res = supabase.table("config_planta").select("*").eq("id", 1).execute()
+    
+    # Si el archivero está vacío (la lista no tiene datos), creamos los valores por defecto
+    if not res.data:
+        valores_por_defecto = {
+            "id": 1,
+            "nombre": "Planta Principal",
+            "latitud": 25.8250665,
+            "longitud": -100.4109077,
+            "tanque_planta_capacidad": 50000,
+            "tanque_planta_actual": 40000
+        }
+        # Intentamos inyectarlos a Supabase para que ya existan
+        try:
+            supabase.table("config_planta").insert(valores_por_defecto).execute()
+        except:
+            pass
+        return valores_por_defecto
+        
+    return res.data[0]
+    
 df_tiros = load_data()
 df_distribuidoras = load_distribuidoras()
 df_clientes = load_clientes()
