@@ -4,3 +4,4 @@ folium
 streamlit-folium
 requests
 supabase
+fpdf2
