@@ -175,10 +175,18 @@ if menu == "🗺️ Centro de Control y Rutas":
 
             if st.button("🚀 Confirmar Despacho y Programar Tiro"):
                 nuevo_t = {
-                    "cliente": cliente_name, "latitud": lat_obra, "longitud": lon_obra,
-                    "litros": litros_req, "ingeniero": ing_resp, "fecha": str(f_prog),
-                    "hora": str(h_prog), "distribuidora": unidad_sel, "estatus": "Pendiente",
-                    "minutos_retraso": 0, "distancia_km": distancia_tramo, "tiempo_estimado_min": tiempo_tramo
+                    "cliente": str(cliente_name), 
+                    "latitud": float(lat_obra), 
+                    "longitud": float(lon_obra),
+                    "litros": int(litros_req), 
+                    "ingeniero": str(ing_resp), 
+                    "fecha": str(f_prog),
+                    "hora": str(h_prog), 
+                    "distribuidora": str(unidad_sel), 
+                    "estatus": "Pendiente",
+                    "minutos_retraso": 0, 
+                    "distancia_km": float(distancia_tramo), 
+                    "tiempo_estimado_min": float(tiempo_tramo)
                 }
                 supabase.table("registro_tiros").insert(nuevo_t).execute()
                 
