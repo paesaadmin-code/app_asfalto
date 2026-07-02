@@ -150,7 +150,7 @@ if menu == "🗺️ Centro de Control y Rutas":
                 lon_obra = st.number_input("Longitud de Destino", format="%.6f", value=-100.4100)
             
             unidad_sel = st.selectbox("Asignar Unidad de Transporte", camiones_operativos["unidad"].tolist())
-            info_u = camiones_operativos[camiones_operativos["unidad"] == unity_find := unidad_sel].iloc[0]
+            info_u = camiones_operativos[camiones_operativos["unidad"] == unidad_sel].iloc[0]
             st.info(f"Operador: {info_u['chofer']} | Disponible en Tanque: {info_u['litros_disponibles']:,} Lts")
             
             litros_req = st.number_input("Volumen Requerido (Litros)", min_value=0, step=500, max_value=int(info_u['capacidad_total']))
