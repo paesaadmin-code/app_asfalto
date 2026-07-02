@@ -26,8 +26,8 @@ except:
     SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFieW15cHVqZm9ubXR2YWtmc2ZnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI5MjA0OTIsImV4cCI6MjA5ODQ5NjQ5Mn0.AsystVXsFbMmHoi8RarhBqPsW4zgvc-EcwAEo9BXV-Q"
     USUARIO_ADMIN = "admin"
     PASSWORD_ADMIN = "asfalto2026"
-    TELEGRAM_TOKEN = ""
-    TELEGRAM_CHAT_ID = ""
+    TELEGRAM_TOKEN = "8321781121:AAE9mLUzOGZwZwGmpQMN614ROSQGFrS-jbM"
+    TELEGRAM_CHAT_ID = "6612216260"
 
 if "auth" not in st.session_state: st.session_state["auth"] = False
 if not st.session_state["auth"]:
