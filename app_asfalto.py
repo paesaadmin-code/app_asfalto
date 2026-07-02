@@ -204,9 +204,12 @@ if menu == "📊 Dashboard Principal":
 # =====================================================================
 # 🚚 MÓDULO 2: OPERACIONES
 # =====================================================================
+# =====================================================================
+# 🚚 MÓDULO 2: OPERACIONES Y DESPACHO INTELIGENTE
+# =====================================================================
 elif menu == "🚚 Operaciones y Despacho":
-    st.header("🚚 Control Logístico y Asignación")
-    tab1, tab2 = st.tabs(["➕ 1. Crear Orden de Servicio", "🚛 2. Seguimiento y Rutas"])
+    st.header("🚚 Control Logístico y Asistente de Asignación")
+    tab1, tab2 = st.tabs(["➕ 1. Crear Orden de Servicio", "🧠 2. Asistente de Despacho y Rutas"])
     
     with tab1:
         with st.form("form_crear_orden"):
@@ -227,7 +230,7 @@ elif menu == "🚚 Operaciones y Despacho":
                     obra_id = int(df_obras[df_obras["display"] == obra_sel].iloc[0]["id"])
                     dict_orden = {"obra_id": obra_id, "litros": int(litros), "fecha": str(fecha), "hora": str(hora), "ingeniero_responsable": str(ing), "notas": str(notas), "distribuidora": "Sin Asignar", "estatus": "Pendiente", "minutos_retraso": 0, "distancia_km": 0.0}
                     supabase.table("registro_tiros").insert(dict_orden).execute()
-                    registrar_notificacion("Operación", f"Nueva orden: {litros} Lts para {obra_sel}. Notas: {notas}", enviar_bot=True)
+                    registrar_notificacion("Operación", f"Nueva orden: {litros} Lts para {obra_sel}.", enviar_bot=True)
                     st.success("Orden Generada Correctamente.")
                     st.rerun()
 
@@ -241,51 +244,90 @@ elif menu == "🚚 Operaciones y Despacho":
                 if not obras_filtro.empty:
                     obra = obras_filtro.iloc[0]
                     with st.expander(f"📌 {row['hora']} | {obra['nombre_obra']} ({row['litros']:,} Lts) - {row['estatus']}", expanded=(row['estatus']=="Pendiente")):
-                        col1, col2, col3 = st.columns(3)
+                        col1, col2 = st.columns([1, 2])
+                        
+                        # --- PANEL IZQUIERDO: DATOS DE LA OBRA ---
                         with col1:
-                            st.write(f"**Cliente:** {obra['cliente']}")
-                            st.write(f"**Ingeniero:** {row['ingeniero_responsable']}")
-                            st.write(f"**Notas:** {row.get('notas', '')}")
-                            if row.get('link_ubicacion'): st.markdown(f"[📍 Abrir Link de Ubicación]({obra['link_ubicacion']})")
+                            st.markdown(f"**🏢 Cliente:** {obra['cliente']}")
+                            st.markdown(f"**👷‍♂️ Recibe:** {row['ingeniero_responsable']}")
+                            st.markdown(f"**📝 Notas:** {row.get('notas', 'Sin notas')}")
+                            if row.get('link_ubicacion'): 
+                                st.markdown(f"[📍 Abrir Ubicación en Maps]({obra['link_ubicacion']})")
+                                
+                            # Evaluación de Capacidad Múltiple
+                            capacidad_max_flota = df_distribuidoras["capacidad_total"].max() if not df_distribuidoras.empty else 0
+                            if row["litros"] > capacidad_max_flota:
+                                st.error(f"🚨 **ALERTA DE CAPACIDAD:** El pedido de {row['litros']:,} Lts supera a tu camión más grande ({capacidad_max_flota:,} Lts). **Deberás enviar al menos 2 equipos o hacer viajes redondos.**")
+                        
+                        # --- PANEL DERECHO: ASISTENTE INTELIGENTE DE ASIGNACIÓN ---
                         with col2:
-                            ops = df_distribuidoras[df_distribuidoras["condicion_operativa"] == "Operativa"]["unidad"].tolist() if not df_distribuidoras.empty else []
-                            idx_camion = ops.index(row["distribuidora"]) if row["distribuidora"] in ops else 0
-                            n_camion = st.selectbox("Asignar Unidad", ["Sin Asignar"] + ops, index=(0 if row["distribuidora"]=="Sin Asignar" else ops.index(row["distribuidora"])+1), key=f"cam_{row['id']}")
-                            if st.button("Confirmar Unidad", key=f"btn_{row['id']}"):
-                                _, dist, _ = get_route_geometry(COORDS_PLANTA, (float(obra["latitud"]), float(obra["longitud"])))
-                                supabase.table("registro_tiros").update({"distribuidora": str(n_camion), "distancia_km": float(dist)}).eq("id", int(row["id"])).execute()
-                                st.rerun()
+                            if row["distribuidora"] == "Sin Asignar":
+                                st.markdown("### 🧠 Análisis de Flota Disponible")
                                 
-                            if st.button("🗺️ Simular Ruta OSRM", key=f"sim_{row['id']}"):
-                                ruta_ida, d_ida, t_ida = get_route_geometry(COORDS_PLANTA, (float(obra["latitud"]), float(obra["longitud"])))
-                                ruta_ret, d_ret, t_ret = get_route_geometry((float(obra["latitud"]), float(obra["longitud"])), COORDS_PLANTA)
-                                st.info(f"**Estimaciones:** Ida ({d_ida} km, {t_ida} min) | Retorno ({d_ret} km, {t_ret} min)")
-                                m_ruta = folium.Map(location=COORDS_PLANTA, zoom_start=11)
-                                if ruta_ida: folium.PolyLine(ruta_ida, color="blue", weight=5, opacity=0.7).add_to(m_ruta)
-                                if ruta_ret: folium.PolyLine(ruta_ret, color="red", weight=5, opacity=0.7, dash_array="10").add_to(m_ruta)
-                                folium.Marker(COORDS_PLANTA, popup="Planta", icon=folium.Icon(color="red")).add_to(m_ruta)
-                                folium.Marker((float(obra["latitud"]), float(obra["longitud"])), popup="Obra", icon=folium.Icon(color="green")).add_to(m_ruta)
-                                folium_static(m_ruta, width=600, height=300)
+                                # Matriz de decisión en tiempo real
+                                matriz_decision = []
+                                ops = df_distribuidoras[df_distribuidoras["condicion_operativa"] == "Operativa"] if not df_distribuidoras.empty else pd.DataFrame()
                                 
-                        with col3:
-                            est_opts = ["Pendiente", "En Proceso", "Completado ✅", "Cancelado ❌"]
-                            n_est = st.selectbox("Actualizar Estatus", est_opts, index=est_opts.index(row["estatus"]), key=f"est_{row['id']}")
-                            if n_est != row["estatus"]:
-                                supabase.table("registro_tiros").update({"estatus": str(n_est)}).eq("id", int(row["id"])).execute()
+                                if not ops.empty:
+                                    for _, cam in ops.iterrows():
+                                        # Simular ruta para cada camión desde Planta (se puede mejorar a ruta desde su ubicación actual)
+                                        _, dist, tiempo = get_route_geometry(COORDS_PLANTA, (float(obra["latitud"]), float(obra["longitud"])))
+                                        
+                                        # Evaluar si el camión tiene el material suficiente
+                                        alcanza = "✅ Sí" if cam["litros_disponibles"] >= row["litros"] else f"❌ No (Faltan {row['litros'] - cam['litros_disponibles']:,} Lts)"
+                                        
+                                        matriz_decision.append({
+                                            "Unidad": cam["unidad"],
+                                            "Operador": cam["chofer"],
+                                            "Tanque Actual": f"{cam['litros_disponibles']:,} Lts",
+                                            "¿Cubre el pedido?": alcanza,
+                                            "Distancia": f"{dist} km",
+                                            "ETA (Tiempo)": f"{tiempo} min"
+                                        })
+                                    
+                                    # Mostrar la tabla comparativa al despachador
+                                    st.dataframe(pd.DataFrame(matriz_decision), hide_index=True, use_container_width=True)
                                 
-                                if n_est == "En Proceso" and row["distribuidora"] != "Sin Asignar":
-                                    registrar_notificacion("Operación", f"{row['distribuidora']} va en camino a {obra['nombre_obra']}", enviar_bot=True)
+                                # Selector para asignar después de ver la tabla
+                                op_lista = ops["unidad"].tolist() if not ops.empty else []
+                                n_camion = st.selectbox("Selecciona la mejor unidad basada en el análisis:", ["Seleccionar..."] + op_lista, key=f"cam_{row['id']}")
                                 
-                                if n_est == "Completado ✅" and row["distribuidora"] != "Sin Asignar":
-                                    u_info = df_distribuidoras[df_distribuidoras["unidad"] == row["distribuidora"]].iloc[0]
-                                    supabase.table("distribuidoras").update({
-                                        "litros_disponibles": max(0, int(u_info["litros_disponibles"] - row["litros"]))
-                                    }).eq("unidad", str(row["distribuidora"])).execute()
-                                    registrar_notificacion("Operación", f"Tiro Completado en {obra['nombre_obra']} por {row['distribuidora']}", enviar_bot=True)
-                                st.rerun()
-                            if st.button("🗑️ Eliminar", key=f"del_{row['id']}"):
-                                supabase.table("registro_tiros").delete().eq("id", int(row["id"])).execute()
-                                st.rerun()
+                                if n_camion != "Seleccionar..." and st.button("Confirmar Despacho", key=f"btn_{row['id']}"):
+                                    _, dist_final, _ = get_route_geometry(COORDS_PLANTA, (float(obra["latitud"]), float(obra["longitud"])))
+                                    supabase.table("registro_tiros").update({"distribuidora": str(n_camion), "distancia_km": float(dist_final), "estatus": "En Proceso"}).eq("id", int(row["id"])).execute()
+                                    registrar_notificacion("Operación", f"{n_camion} asignado a {obra['nombre_obra']}.", enviar_bot=True)
+                                    st.rerun()
+                                    
+                            else:
+                                # SI YA ESTÁ ASIGNADO, MOSTRAR PANEL DE RASTREO Y ESTATUS
+                                st.info(f"🚚 Unidad Asignada: **{row['distribuidora']}**")
+                                
+                                est_opts = ["En Proceso", "Completado ✅", "Cancelado ❌"]
+                                n_est = st.selectbox("Actualizar Estatus de Entrega", est_opts, index=est_opts.index(row["estatus"]) if row["estatus"] in est_opts else 0, key=f"est_{row['id']}")
+                                
+                                if st.button("Guardar Estatus", key=f"upd_{row['id']}"):
+                                    supabase.table("registro_tiros").update({"estatus": str(n_est)}).eq("id", int(row["id"])).execute()
+                                    
+                                    if n_est == "Completado ✅":
+                                        u_info = df_distribuidoras[df_distribuidoras["unidad"] == row["distribuidora"]].iloc[0]
+                                        supabase.table("distribuidoras").update({
+                                            "litros_disponibles": max(0, int(u_info["litros_disponibles"] - row["litros"]))
+                                        }).eq("unidad", str(row["distribuidora"])).execute()
+                                        registrar_notificacion("Operación", f"Descarga finalizada en {obra['nombre_obra']}", enviar_bot=True)
+                                    st.rerun()
+                                    
+                                if st.button("🗺️ Ver Ruta Satelital (OSRM)", key=f"sim_{row['id']}"):
+                                    ruta_ida, d_ida, t_ida = get_route_geometry(COORDS_PLANTA, (float(obra["latitud"]), float(obra["longitud"])))
+                                    st.success(f"**Ruta de Ida:** {d_ida} km | Tiempo estimado: {t_ida} minutos.")
+                                    m_ruta = folium.Map(location=COORDS_PLANTA, zoom_start=11)
+                                    if ruta_ida: folium.PolyLine(ruta_ida, color="blue", weight=5, opacity=0.8).add_to(m_ruta)
+                                    folium.Marker(COORDS_PLANTA, popup="Planta", icon=folium.Icon(color="red")).add_to(m_ruta)
+                                    folium.Marker((float(obra["latitud"]), float(obra["longitud"])), popup="Obra", icon=folium.Icon(color="green")).add_to(m_ruta)
+                                    folium_static(m_ruta, width=500, height=300)
+                                    
+                                if st.button("🗑️ Eliminar Tiro (Admin)", key=f"del_{row['id']}"):
+                                    supabase.table("registro_tiros").delete().eq("id", int(row["id"])).execute()
+                                    st.rerun()
         else: st.info("No hay operaciones registradas para esta fecha.")
 
 # =====================================================================
