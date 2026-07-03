@@ -81,6 +81,10 @@ df_distribuidoras = get_table("distribuidoras")
 df_clientes = get_table("clientes")
 df_obras = get_table("obras")
 df_tiros = get_table("registro_tiros")
+# 🛡️ Escudo protector: Si Supabase no manda la columna, Python la crea para evitar que el sistema colapse
+if "orden_visita" not in df_tiros.columns:
+    df_tiros["orden_visita"] = 1
+
 df_notif = get_table("notificaciones")
 
 COORDS_PLANTA = (float(df_planta.iloc[0]["latitud"]), float(df_planta.iloc[0]["longitud"])) if not df_planta.empty else (25.8250, -100.4109)
