@@ -106,11 +106,16 @@ def generar_pdf(df_dia, fecha):
     if not df_dia.empty:
         for _, row in df_dia.sort_values(by="hora").iterrows():
             obra_n = df_obras[df_obras["id"] == row["obra_id"]].iloc[0]["nombre_obra"] if not df_obras.empty else "N/A"
+            
+            # FILTRO ANTI-EMOJIS Y CARACTERES NO SOPORTADOS PARA EL PDF
+            estatus_limpio = str(row["estatus"]).encode('latin-1', 'ignore').decode('latin-1').strip()
+            obra_limpia = str(obra_n)[:40].encode('latin-1', 'ignore').decode('latin-1').strip()
+            
             pdf.cell(20, 8, str(row["hora"]), border=1)
             pdf.cell(25, 8, str(row["distribuidora"]), border=1)
-            pdf.cell(80, 8, str(obra_n)[:40], border=1)
+            pdf.cell(80, 8, obra_limpia, border=1)
             pdf.cell(15, 8, str(row["litros"]), border=1)
-            pdf.cell(30, 8, str(row["estatus"][:12]), border=1)
+            pdf.cell(30, 8, estatus_limpio[:12], border=1)
             pdf.cell(20, 8, str(row["distancia_km"]), border=1)
             pdf.ln()
     return bytes(pdf.output())
